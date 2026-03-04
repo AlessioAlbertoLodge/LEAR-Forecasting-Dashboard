@@ -2,5 +2,5 @@ streamlit
 pandas
 numpy
 plotly
-entsoe-py
-epftoolbox
+entsoe-apy
+git+https://github.com/jeslago/epftoolbox.git
