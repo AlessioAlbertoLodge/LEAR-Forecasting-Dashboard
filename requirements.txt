@@ -3,4 +3,5 @@ pandas
 numpy
 plotly
 entsoe-apy
+setuptools
 git+https://github.com/jeslago/epftoolbox.git
