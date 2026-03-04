@@ -1,6 +1,14 @@
 # app.py
 from __future__ import annotations
 
+# hyperopt (pulled in by epftoolbox) imports pkg_resources which is missing in Python 3.13+
+import sys
+try:
+    import pkg_resources  # noqa: F401
+except ImportError:
+    from unittest.mock import MagicMock
+    sys.modules["pkg_resources"] = MagicMock()
+
 import pandas as pd
 import streamlit as st
 import plotly.express as px
