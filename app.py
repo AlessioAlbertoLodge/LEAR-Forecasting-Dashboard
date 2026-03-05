@@ -21,6 +21,28 @@ from entsoe_client import (
     resample_prices,
 )
 from epftoolbox.models import LEAR
+import numpy as _np
+
+# ---------------------------------------------------------------------------
+# NumPy / sklearn compatibility patch for epftoolbox LEAR.predict
+# ---------------------------------------------------------------------------
+# In newer NumPy (2.x) + sklearn, `Lasso.predict(X)` with X.shape=(1, n)
+# returns a shape-(1,) array.  The original epftoolbox code does:
+#   Yp[h] = self.models[h].predict(X)
+# which tries to store a 1-element array into a scalar slot of Yp.
+# This raises ValueError on Python 3.13 / NumPy 2.x.
+# The patch extracts a Python float via .flat[0] before assignment.
+def _lear_predict_compat(self, X):
+    Yp = _np.zeros(24)
+    X_no_dummies = self.scalerX.transform(X[:, :-7])
+    X[:, :-7] = X_no_dummies
+    for h in range(24):
+        raw = self.models[h].predict(X)
+        Yp[h] = float(_np.ravel(raw)[0])
+    Yp = self.scalerY.inverse_transform(Yp.reshape(1, -1))
+    return Yp
+
+LEAR.predict = _lear_predict_compat
 
 from lear_helper import (
     build_lear_hourly_df_from_prices,
@@ -343,19 +365,39 @@ c4.metric("Raw points fetched", f"{len(prices_raw)}")
 # -----------------------------------------------------------------------------
 model = LEAR(calibration_window=calibration_window_days)
 
-with st.spinner("Training LEAR and forecasting day X (tomorrow)…"):
-    pred_day_x = model.recalibrate_and_forecast_next_day(
-        df=lear_df_for_epf,
-        calibration_window=calibration_window_days,
-        next_day_date=next_day_x_utc_naive.to_pydatetime(),
-    )
+try:
+    with st.spinner("Training LEAR and forecasting day X (tomorrow)…"):
+        pred_day_x = model.recalibrate_and_forecast_next_day(
+            df=lear_df_for_epf,
+            calibration_window=calibration_window_days,
+            next_day_date=next_day_x_utc_naive.to_pydatetime(),
+        )
+except Exception as _e:
+    st.error(f"LEAR Day X forecast failed: {type(_e).__name__}: {_e}")
+    with st.expander("Day X debug info"):
+        st.write({
+            "next_day_x_utc_naive": str(next_day_x_utc_naive),
+            "lear_df_for_epf_shape": str(lear_df_for_epf.shape),
+            "lear_df_for_epf_index_range": f"{lear_df_for_epf.index.min()} → {lear_df_for_epf.index.max()}",
+            "nan_count": int(lear_df_for_epf["Price"].isna().sum()),
+        })
+    st.stop()
 
-with st.spinner("Training LEAR and forecasting day X+1…"):
-    pred_day_x1 = model.recalibrate_and_forecast_next_day(
-        df=lear_df_for_epf,
-        calibration_window=calibration_window_days,
-        next_day_date=next_day_x1_utc_naive.to_pydatetime(),
-    )
+try:
+    with st.spinner("Training LEAR and forecasting day X+1…"):
+        pred_day_x1 = model.recalibrate_and_forecast_next_day(
+            df=lear_df_for_epf,
+            calibration_window=calibration_window_days,
+            next_day_date=next_day_x1_utc_naive.to_pydatetime(),
+        )
+except Exception as _e:
+    st.error(f"LEAR Day X+1 forecast failed: {type(_e).__name__}: {_e}")
+    with st.expander("Day X+1 debug info"):
+        st.write({
+            "next_day_x1_utc_naive": str(next_day_x1_utc_naive),
+            "lear_df_for_epf_shape": str(lear_df_for_epf.shape),
+        })
+    st.stop()
 
 # -----------------------------------------------------------------------------
 # Plot indices (display tz)
